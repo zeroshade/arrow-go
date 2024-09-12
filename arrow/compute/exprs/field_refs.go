@@ -252,3 +252,17 @@ func GetReferencedValue(mem memory.Allocator, ref expr.ReferenceSegment, value c
 
 	return value, nil
 }
+
+func FieldsInExpression(ex expr.Expression) []expr.FieldReference {
+	if ref, ok := ex.(*expr.FieldReference); ok {
+		return []expr.FieldReference{*ref}
+	}
+
+	result := make([]expr.FieldReference, 0)
+	ex.Visit(func(e expr.Expression) expr.Expression {
+		result = append(result, FieldsInExpression(e)...)
+		return e
+	})
+
+	return result
+}

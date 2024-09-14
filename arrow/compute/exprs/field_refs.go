@@ -254,6 +254,10 @@ func GetReferencedValue(mem memory.Allocator, ref expr.ReferenceSegment, value c
 }
 
 func FieldsInExpression(ex expr.Expression) []expr.FieldReference {
+	if ex == nil {
+		return []expr.FieldReference{}
+	}
+
 	if ref, ok := ex.(*expr.FieldReference); ok {
 		return []expr.FieldReference{*ref}
 	}

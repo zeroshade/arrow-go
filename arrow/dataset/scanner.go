@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 )
 
 type TaggedRecord struct {
@@ -110,9 +111,14 @@ func NewScanner(opts *ScanOptions, dataset Dataset) *Scanner {
 	return &Scanner{options: opts, dataset: dataset}
 }
 
-func NewScannerFromFragment(schema *arrow.Schema, fragment Fragment, opts *ScanOptions) *Scanner {
+func NewScannerFromFragment(fragment Fragment, opts *ScanOptions) (*Scanner, error) {
+	schema, err := fragment.ReadPhysicalSchema()
+	if err != nil {
+		return nil, err
+	}
+
 	ds := &fragmentDataset{schema: schema, fragments: []Fragment{fragment}}
-	return NewScanner(opts, ds)
+	return NewScanner(opts, ds), nil
 }
 
 func (s *Scanner) ScanBatches(ctx context.Context) (<-chan TaggedRecord, error) {
@@ -148,7 +154,7 @@ func (s *Scanner) ScanBatches(ctx context.Context) (<-chan TaggedRecord, error) 
 		}
 	}()
 
-	outputCh := make(chan EnumeratedRecord, s.options.FormatOptions.ChannelBufferSize())
+	outputCh := make(chan EnumeratedRecord, 4)
 
 	var wg sync.WaitGroup
 	wg.Add(int(s.options.FragmentReadahead))
@@ -178,6 +184,7 @@ func (s *Scanner) ScanBatches(ctx context.Context) (<-chan TaggedRecord, error) 
 						outRecord EnumeratedRecord
 					)
 
+				RecordLoop:
 					for {
 						select {
 						case <-ctx.Done():
@@ -188,6 +195,7 @@ func (s *Scanner) ScanBatches(ctx context.Context) (<-chan TaggedRecord, error) 
 									outRecord.RecordBatch.Last = true
 									outputCh <- outRecord
 								}
+								break RecordLoop
 							}
 
 							if outRecord.RecordBatch.Value != nil {
@@ -230,7 +238,7 @@ func (s *Scanner) ScanBatches(ctx context.Context) (<-chan TaggedRecord, error) 
 		return batch.Fragment.Index < 0
 	}
 
-	return makeMappedChan(makeSequencingChan(uint(s.options.FormatOptions.ChannelBufferSize()), outputCh, func(left, right *EnumeratedRecord) bool {
+	return makeMappedChan(makeSequencingChan(uint(4), outputCh, func(left, right *EnumeratedRecord) bool {
 		switch {
 		case isBeforeAny(*left):
 			return true
@@ -258,4 +266,23 @@ func (s *Scanner) ScanBatches(ctx context.Context) (<-chan TaggedRecord, error) 
 			Err:         in.Err,
 		}
 	}), nil
+}
+
+func (s *Scanner) ToTable(ctx context.Context) (arrow.Table, error) {
+	gen, err := s.ScanBatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	records := make([]arrow.Record, 0)
+	for r := range gen {
+		if r.Err != nil {
+			return nil, r.Err
+		}
+
+		records = append(records, r.RecordBatch)
+		defer r.RecordBatch.Release()
+	}
+
+	return array.NewTableFromRecords(s.dataset.Schema(), records), nil
 }

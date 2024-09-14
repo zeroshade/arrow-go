@@ -302,6 +302,8 @@ func NewExprBuilder(extSet ExtensionIDSet) ExprBuilder {
 	}
 }
 
+func (e *ExprBuilder) ExtIDSet() ExtensionIDSet { return e.extSet }
+
 // SetInputSchema sets the current Arrow schema that will be utilized
 // for performing field reference and field type resolutions.
 func (e *ExprBuilder) SetInputSchema(s *arrow.Schema) error {

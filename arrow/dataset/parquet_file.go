@@ -18,11 +18,17 @@ package dataset
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/compute"
+	"github.com/apache/arrow-go/v18/arrow/compute/exprs"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/parquet"
 	"github.com/apache/arrow-go/v18/parquet/file"
@@ -102,6 +108,7 @@ var defaultParquetOptions = ParquetFragmentScanOptions{
 		Parallel:  true,
 		BatchSize: DefaultBatchSize,
 	},
+	ChanBufferSize: 4,
 }
 
 type ParquetFileFormat struct {
@@ -113,12 +120,12 @@ type ParquetFileFormat struct {
 func (pf ParquetFileFormat) TypeName() string { return parquetTypeName }
 
 func (pf ParquetFileFormat) DefaultFragmentScanOptions() FragmentScanOptions {
-	return &defaultParquetOptions
+	return defaultParquetOptions
 }
 
 func (pf ParquetFileFormat) GetReader(src FileSource, opts *ScanOptions, meta *metadata.FileMetaData) (*pqarrow.FileReader, error) {
 	scanOpts, err := getFragmentScanOptions[ParquetFragmentScanOptions](parquetTypeName,
-		opts, &defaultParquetOptions)
+		opts, defaultParquetOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -187,14 +194,26 @@ func inferColumnProjection(rdr *pqarrow.FileReader, opts *ScanOptions) []int {
 		return nil
 	}
 
-	// manifest := rdr.Manifest
-	// refs := exprs.FieldsInExpression(opts.Filter)
-	// for _, c := range opts.Columns {
-	// 	refs = append(refs, expr.FieldReference{
-	// 		Reference: exprs.RefFromFieldPath(c),
-	// 		Root:      expr.RootReference,
-	// 	})
-	// }
+	manifest := rdr.Manifest
+	refs := exprs.FieldsInExpression(opts.Filter)
+	for _, c := range opts.Columns {
+		refs = append(refs, expr.FieldReference{
+			Reference: exprs.RefFromFieldPath(c),
+			Root:      expr.RootReference,
+		})
+	}
+
+	indices := make([]int, len(refs))
+	for i, r := range refs {
+		if r.Reference.(expr.ReferenceSegment).GetChild() != nil {
+			return nil
+		}
+
+		indices[i] = int(r.Reference.(expr.ReferenceSegment).(*expr.StructFieldRef).Field)
+	}
+
+	out, _ := manifest.GetFieldIndices(indices)
+	return out
 
 	// // Build a lookup table from top level field name to field metadata.
 	// // This is to avoid quadratic-time mapping of projected fields to
@@ -251,6 +270,10 @@ func (pf ParquetFileFormat) ScanBatches(ctx context.Context, opts *ScanOptions, 
 		}
 	}
 
+	if opts.FormatOptions == nil {
+		opts.FormatOptions = pf.DefaultFragmentScanOptions()
+	}
+
 	bufSize := opts.FormatOptions.ChannelBufferSize()
 	if bufSize <= 0 {
 		bufSize = 1
@@ -296,6 +319,24 @@ func (pf ParquetFileFormat) ScanBatches(ctx context.Context, opts *ScanOptions, 
 
 		for recRdr.Next() {
 			rec := recRdr.Record()
+			if opts.Filter != nil {
+				input := compute.NewDatumWithoutOwning(rec)
+				mask, err := exprs.ExecuteScalarExpression(ctx, rec.Schema(),
+					opts.Filter, input)
+				if err != nil {
+					ch <- RecordMessage{Err: err}
+					return
+				}
+				result, err := compute.Filter(ctx, input, mask, *compute.DefaultFilterOptions())
+				if err != nil {
+					ch <- RecordMessage{Err: err}
+					return
+				}
+
+				mask.Release()
+				rec = result.(*compute.RecordDatum).Value
+			}
+
 			if rec.NumRows() <= opts.BatchSize {
 				rec.Retain()
 				ch <- RecordMessage{Record: rec}
@@ -308,9 +349,30 @@ func (pf ParquetFileFormat) ScanBatches(ctx context.Context, opts *ScanOptions, 
 			}
 		}
 
-		ch <- RecordMessage{Err: recRdr.Err()}
+		if recRdr.Err() != nil && !errors.Is(recRdr.Err(), io.EOF) {
+			ch <- RecordMessage{Err: recRdr.Err()}
+		}
 	}()
 	return ch, nil
+}
+
+func (pf ParquetFileFormat) FragmentFromFile(fsys fs.StatFS, filepath string, partitionExpr expr.Expression) (Fragment, error) {
+	info, err := fsys.Stat(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ParquetFileFragment{
+		fileFragment: fileFragment{
+			source: FileSource{
+				Path: strings.TrimSuffix(filepath, info.Name()),
+				Info: info,
+			},
+			format:    pf,
+			partition: partitionExpr,
+		},
+		parquetFormat: &pf,
+	}, nil
 }
 
 func (pf ParquetFileFormat) MakeFragment(src FileSource, physicalSchema *arrow.Schema, partitionExpr expr.Expression) (FileFragment, error) {
@@ -334,6 +396,10 @@ type ParquetFileFragment struct {
 
 	parquetFormat *ParquetFileFormat
 	manifest      *pqarrow.SchemaManifest
+}
+
+func (p *ParquetFileFragment) ScanBatches(ctx context.Context, opts *ScanOptions) (RecordGenerator, error) {
+	return p.format.ScanBatches(ctx, opts, p)
 }
 
 func (p *ParquetFileFragment) Metadata() *metadata.FileMetaData {

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"path"
 	"strings"
 
@@ -55,7 +56,12 @@ func (f FileSource) String() string { return path.Join(f.Path, f.Info.Name()) }
 
 func (f FileSource) Open() (File, error) {
 	if f.Info.Sys() != nil {
-		fullPath := path.Join(f.Path, f.Info.Name())
+		var fullPath string
+		if strings.Contains(f.Path, "://") {
+			fullPath, _ = url.JoinPath(f.Path, f.Info.Name())
+		} else {
+			fullPath = path.Join(f.Path, f.Info.Name())
+		}
 		file, err := f.Info.Sys().(fs.FS).Open(fullPath)
 		if err != nil {
 			return nil, err
@@ -65,7 +71,7 @@ func (f FileSource) Open() (File, error) {
 		if !ok {
 			file.Close()
 			return nil, fmt.Errorf("%w: filesystem returned file without ReadAt or Seek for path, %s",
-				arrow.ErrInvalid, fullPath)
+				arrow.ErrInvalid, f.Info.Name())
 		}
 		return res, nil
 	}
@@ -102,9 +108,6 @@ func (f *fileFragment) Source() FileSource { return f.source }
 func (f *fileFragment) Format() FileFormat { return f.format }
 func (f *fileFragment) ReadPhysicalSchema() (*arrow.Schema, error) {
 	return f.format.Inspect(f.source)
-}
-func (f *fileFragment) ScanBatches(ctx context.Context, opts *ScanOptions) (RecordGenerator, error) {
-	return f.format.ScanBatches(ctx, opts, f)
 }
 
 func (f *fileFragment) Equals(rhs FileFragment) bool {

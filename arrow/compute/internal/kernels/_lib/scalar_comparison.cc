@@ -30,28 +30,28 @@ inline void pack_bits(const uint32_t* values, uint8_t* out) {
 
 struct Equal {
     template <typename T>
-    static constexpr bool Call(const T& left, const T& right) {
+    static bool Call(const T& left, const T& right) {
         return left == right;
     }
 };
 
 struct NotEqual {
     template <typename T>
-    static constexpr bool Call(const T& left, const T& right) {
+    static bool Call(const T& left, const T& right) {
         return left != right;
     }
 };
 
 struct Greater {
     template <typename T>
-    static constexpr bool Call(const T& left, const T& right) {
+    static bool Call(const T& left, const T& right) {
         return left > right;
     }
 };
 
 struct GreaterEqual {
     template <typename T>
-    static constexpr bool Call(const T& left, const T& right) {
+    static bool Call(const T& left, const T& right) {
         return left >= right;
     }
 };

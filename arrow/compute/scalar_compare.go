@@ -158,6 +158,7 @@ func RegisterScalarComparisons(reg FunctionRegistry) {
 				arg := args[0].(*ScalarDatum)
 				switch arg.Type() {
 				case arrow.PrimitiveTypes.Float32, arrow.PrimitiveTypes.Float64:
+					// IEEE 754 says that only NAN satisfies f != f
 					return CallFunction(ctx, "not_equal", nil, arg, arg)
 				default:
 					return NewDatum(true), nil

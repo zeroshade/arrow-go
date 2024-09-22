@@ -1493,9 +1493,9 @@ func (sv *ScalarValiditySuite) TestIsNaN() {
 		in       string
 		expected string
 	}{
-		// {`[]`, `[]`},
-		// {`[1]`, `[false]`},
-		// {`[null]`, `[null]`},
+		{`[]`, `[]`},
+		{`[1]`, `[false]`},
+		{`[null]`, `[null]`},
 		{`["NaN", 1, 0, null]`, `[true, false, false, null]`},
 	}
 

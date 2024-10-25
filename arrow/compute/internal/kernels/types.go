@@ -107,3 +107,4 @@ func SimpleBinary[K SimpleBinaryKernel](ctx *exec.KernelCtx, batch *exec.ExecSpa
 	debug.Assert(false, "should be unreachable")
 	return fmt.Errorf("%w: should be unreachable", arrow.ErrInvalid)
 }
+

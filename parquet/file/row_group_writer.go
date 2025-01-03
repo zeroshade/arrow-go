@@ -80,6 +80,8 @@ type rowGroupWriter struct {
 
 	columnWriters []ColumnChunkWriter
 	pager         PageWriter
+
+	bloomFilters map[string]metadata.BloomFilterBuilder
 }
 
 func newRowGroupWriter(sink utils.WriterTell, metadata *metadata.RowGroupMetaDataBuilder, ordinal int16, props *parquet.WriterProperties, buffered bool, fileEncryptor encryption.FileEncryptor, pageIdxBldr *metadata.PageIndexBuilder) *rowGroupWriter {
@@ -92,6 +94,9 @@ func newRowGroupWriter(sink utils.WriterTell, metadata *metadata.RowGroupMetaDat
 		fileEncryptor:    fileEncryptor,
 		pageIndexBuilder: pageIdxBldr,
 	}
+
+	ret.bloomFilters = make(map[string]metadata.BloomFilterBuilder)
+
 	if buffered {
 		ret.initColumns()
 	} else {
@@ -187,6 +192,7 @@ func (rg *rowGroupWriter) NextColumn() (ColumnChunkWriter, error) {
 	}
 
 	rg.columnWriters[0] = NewColumnChunkWriter(colMeta, rg.pager, rg.props)
+	rg.bloomFilters[path] = rg.columnWriters[0].GetBloomFilter()
 	return rg.columnWriters[0], nil
 }
 
@@ -249,6 +255,7 @@ func (rg *rowGroupWriter) initColumns() error {
 	if rg.columnWriters == nil {
 		rg.columnWriters = make([]ColumnChunkWriter, 0, rg.NumColumns())
 	}
+
 	for i := 0; i < rg.NumColumns(); i++ {
 		colMeta := rg.metadata.NextColumnChunk()
 		path := colMeta.Descr().Path()
@@ -279,7 +286,9 @@ func (rg *rowGroupWriter) initColumns() error {
 		pager.SetIndexBuilders(colIdxBldr, offsetIdxBldr)
 
 		rg.nextColumnIdx++
-		rg.columnWriters = append(rg.columnWriters, NewColumnChunkWriter(colMeta, pager, rg.props))
+		cw := NewColumnChunkWriter(colMeta, pager, rg.props)
+		rg.columnWriters = append(rg.columnWriters, cw)
+		rg.bloomFilters[path] = cw.GetBloomFilter()
 	}
 	return nil
 }

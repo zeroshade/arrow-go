@@ -49,41 +49,61 @@ const (
 	DefaultMaxStatsSize int64 = 4096
 	// Default is to not write page indexes for columns
 	DefaultPageIndexEnabled = false
-	DefaultCreatedBy        = "parquet-go version 18.0.0-SNAPSHOT"
-	DefaultRootName         = "schema"
+
+	DefaultCreatedBy = "parquet-go version 18.0.0-SNAPSHOT"
+	DefaultRootName  = "schema"
+
+	DefaultMaxBloomFilterBytes        = 1024 * 1024
+	DefaultBloomFilterEnabled         = false
+	DefaultBloomFilterFPP             = 0.01
+	DefaultAdaptiveBloomFilterEnabled = false
+	DefaultBloomFilterCandidates      = 5
 )
 
 // ColumnProperties defines the encoding, codec, and so on for a given column.
 type ColumnProperties struct {
-	Encoding          Encoding
-	Codec             compress.Compression
-	DictionaryEnabled bool
-	StatsEnabled      bool
-	PageIndexEnabled  bool
-	MaxStatsSize      int64
-	CompressionLevel  int
+	Encoding                   Encoding
+	Codec                      compress.Compression
+	DictionaryEnabled          bool
+	StatsEnabled               bool
+	MaxStatsSize               int64
+	PageIndexEnabled           bool
+	CompressionLevel           int
+	BloomFilterEnabled         bool
+	BloomFilterFPP             float64
+	AdaptiveBloomFilterEnabled bool
+	BloomFilterCandidates      int
+	BloomFilterNDV             int64
 }
 
 // DefaultColumnProperties returns the default properties which get utilized for writing.
 //
 // The default column properties are the following constants:
 //
-// Encoding:           Encodings.Plain
-// Codec:              compress.Codecs.Uncompressed
-// DictionaryEnabled:	DefaultDictionaryEnabled
-// StatsEnabled:       DefaultStatsEnabled
-// PageIndexEnabled:   DefaultPageIndexEnabled
-// MaxStatsSize:       DefaultMaxStatsSize
-// CompressionLevel:   compress.DefaultCompressionLevel
+// Encoding:                   Encodings.Plain
+// Codec:                      compress.Codecs.Uncompressed
+// DictionaryEnabled:          DefaultDictionaryEnabled
+// StatsEnabled:               DefaultStatsEnabled
+// MaxStatsSize:               DefaultMaxStatsSize
+// PageIndexEnabled:           DefaultPageIndexEnabled
+// CompressionLevel:           compress.DefaultCompressionLevel
+// BloomFilterEnabled:         DefaultBloomFilterEnabled
+// BloomFilterFPP:             DefaultBloomFilterFPP
+// AdaptiveBloomFilterEnabled: DefaultAdaptiveBloomFilterEnabled
+// BloomFilterCandidates:      DefaultBloomFilterCandidates
 func DefaultColumnProperties() ColumnProperties {
 	return ColumnProperties{
-		Encoding:          Encodings.Plain,
-		Codec:             compress.Codecs.Uncompressed,
-		DictionaryEnabled: DefaultDictionaryEnabled,
-		StatsEnabled:      DefaultStatsEnabled,
-		PageIndexEnabled:  DefaultPageIndexEnabled,
-		MaxStatsSize:      DefaultMaxStatsSize,
-		CompressionLevel:  compress.DefaultCompressionLevel,
+		Encoding:                   Encodings.Plain,
+		Codec:                      compress.Codecs.Uncompressed,
+		DictionaryEnabled:          DefaultDictionaryEnabled,
+		StatsEnabled:               DefaultStatsEnabled,
+		MaxStatsSize:               DefaultMaxStatsSize,
+		PageIndexEnabled:           DefaultPageIndexEnabled,
+		CompressionLevel:           compress.DefaultCompressionLevel,
+		BloomFilterEnabled:         DefaultBloomFilterEnabled,
+		BloomFilterFPP:             DefaultBloomFilterFPP,
+		AdaptiveBloomFilterEnabled: DefaultAdaptiveBloomFilterEnabled,
+		BloomFilterCandidates:      DefaultBloomFilterCandidates,
 	}
 }
 
@@ -91,13 +111,18 @@ func DefaultColumnProperties() ColumnProperties {
 type SortingColumn = format.SortingColumn
 
 type writerPropConfig struct {
-	wr            *WriterProperties
-	encodings     map[string]Encoding
-	codecs        map[string]compress.Compression
-	compressLevel map[string]int
-	dictEnabled   map[string]bool
-	statsEnabled  map[string]bool
-	indexEnabled  map[string]bool
+	wr                         *WriterProperties
+	encodings                  map[string]Encoding
+	codecs                     map[string]compress.Compression
+	compressLevel              map[string]int
+	dictEnabled                map[string]bool
+	statsEnabled               map[string]bool
+	indexEnabled               map[string]bool
+	bloomFilterNDVs            map[string]int64
+	bloomFilterFPPs            map[string]float64
+	bloomFilterEnabled         map[string]bool
+	adaptiveBloomFilterEnabled map[string]bool
+	numBloomFilterCandidates   map[string]int
 }
 
 // WriterProperty is used as the options for building a writer properties instance
@@ -337,20 +362,107 @@ func WithPageIndexEnabledPath(path ColumnPath, enabled bool) WriterProperty {
 	return WithPageIndexEnabledFor(path.String(), enabled)
 }
 
+func WithMaxBloomFilterBytes(nbytes int64) WriterProperty {
+	return func(cfg *writerPropConfig) {
+		cfg.wr.maxBloomFilterBytes = nbytes
+	}
+}
+
+func WithBloomFilterEnabled(enabled bool) WriterProperty {
+	return func(cfg *writerPropConfig) {
+		cfg.wr.defColumnProps.BloomFilterEnabled = enabled
+	}
+}
+
+func WithBloomFilterEnabledFor(path string, enabled bool) WriterProperty {
+	return func(cfg *writerPropConfig) {
+		cfg.bloomFilterEnabled[path] = enabled
+	}
+}
+
+func WithBloomFilterEnabledPath(path ColumnPath, enabled bool) WriterProperty {
+	return WithBloomFilterEnabledFor(path.String(), enabled)
+}
+
+func WithBloomFilterFPP(fpp float64) WriterProperty {
+	return func(cfg *writerPropConfig) {
+		cfg.wr.defColumnProps.BloomFilterFPP = fpp
+	}
+}
+
+func WithBloomFilterFPPFor(path string, fpp float64) WriterProperty {
+	return func(cfg *writerPropConfig) {
+		cfg.bloomFilterFPPs[path] = fpp
+	}
+}
+
+func WithBloomFilterFPPPath(path ColumnPath, fpp float64) WriterProperty {
+	return WithBloomFilterFPPFor(path.String(), fpp)
+}
+
+func WithAdaptiveBloomFilterEnabled(enabled bool) WriterProperty {
+	return func(cfg *writerPropConfig) {
+		cfg.wr.defColumnProps.AdaptiveBloomFilterEnabled = enabled
+	}
+}
+
+func WithAdaptiveBloomFilterEnabledFor(path string, enabled bool) WriterProperty {
+	return func(cfg *writerPropConfig) {
+		cfg.adaptiveBloomFilterEnabled[path] = enabled
+	}
+}
+
+func WithAdaptiveBloomFilterEnabledPath(path ColumnPath, enabled bool) WriterProperty {
+	return WithAdaptiveBloomFilterEnabledFor(path.String(), enabled)
+}
+
+func WithBloomFilterCandidates(candidates int) WriterProperty {
+	return func(cfg *writerPropConfig) {
+		cfg.wr.defColumnProps.BloomFilterCandidates = candidates
+	}
+}
+
+func WithBloomFilterCandidatesFor(path string, candidates int) WriterProperty {
+	return func(cfg *writerPropConfig) {
+		cfg.numBloomFilterCandidates[path] = candidates
+	}
+}
+
+func WithBloomFilterCandidatesPath(path ColumnPath, candidates int) WriterProperty {
+	return WithBloomFilterCandidatesFor(path.String(), candidates)
+}
+
+func WithBloomFilterNDV(ndv int64) WriterProperty {
+	return func(cfg *writerPropConfig) {
+		cfg.wr.defColumnProps.BloomFilterNDV = ndv
+	}
+}
+
+func WithBloomFilterNDVFor(path string, ndv int64) WriterProperty {
+	return func(cfg *writerPropConfig) {
+		cfg.bloomFilterNDVs[path] = ndv
+	}
+}
+
+func WithBloomFilterNDVPath(path ColumnPath, ndv int64) WriterProperty {
+	return WithBloomFilterNDVFor(path.String(), ndv)
+}
+
 // WriterProperties is the collection of properties to use for writing a parquet file. The values are
 // read only once it has been constructed.
 type WriterProperties struct {
-	mem               memory.Allocator
-	dictPagesize      int64
-	batchSize         int64
-	maxRowGroupLen    int64
-	pageSize          int64
-	parquetVersion    Version
-	createdBy         string
-	dataPageVersion   DataPageVersion
-	rootName          string
-	rootRepetition    Repetition
-	storeDecimalAsInt bool
+	mem                 memory.Allocator
+	dictPagesize        int64
+	batchSize           int64
+	maxRowGroupLen      int64
+	pageSize            int64
+	parquetVersion      Version
+	createdBy           string
+	dataPageVersion     DataPageVersion
+	rootName            string
+	rootRepetition      Repetition
+	storeDecimalAsInt   bool
+	maxBloomFilterBytes int64
 
 	defColumnProps  ColumnProperties
 	columnProps     map[string]*ColumnProperties
@@ -360,18 +472,19 @@ type WriterProperties struct {
 
 func defaultWriterProperties() *WriterProperties {
 	return &WriterProperties{
-		mem:             memory.DefaultAllocator,
-		dictPagesize:    DefaultDictionaryPageSizeLimit,
-		batchSize:       DefaultWriteBatchSize,
-		maxRowGroupLen:  DefaultMaxRowGroupLen,
-		pageSize:        DefaultDataPageSize,
-		parquetVersion:  V2_LATEST,
-		dataPageVersion: DataPageV1,
-		createdBy:       DefaultCreatedBy,
-		rootName:        DefaultRootName,
-		rootRepetition:  Repetitions.Repeated,
-		defColumnProps:  DefaultColumnProperties(),
-		sortingCols:     []SortingColumn{},
+		mem:                 memory.DefaultAllocator,
+		dictPagesize:        DefaultDictionaryPageSizeLimit,
+		batchSize:           DefaultWriteBatchSize,
+		maxRowGroupLen:      DefaultMaxRowGroupLen,
+		pageSize:            DefaultDataPageSize,
+		parquetVersion:      V2_LATEST,
+		dataPageVersion:     DataPageV1,
+		createdBy:           DefaultCreatedBy,
+		rootName:            DefaultRootName,
+		rootRepetition:      Repetitions.Repeated,
+		maxBloomFilterBytes: DefaultMaxBloomFilterBytes,
+		defColumnProps:      DefaultColumnProperties(),
+		sortingCols:         []SortingColumn{},
 	}
 }
 
@@ -391,13 +504,18 @@ func defaultWriterProperties() *WriterProperties {
 //	CreatedBy:					DefaultCreatedBy
 func NewWriterProperties(opts ...WriterProperty) *WriterProperties {
 	cfg := writerPropConfig{
-		wr:            defaultWriterProperties(),
-		encodings:     make(map[string]Encoding),
-		codecs:        make(map[string]compress.Compression),
-		compressLevel: make(map[string]int),
-		dictEnabled:   make(map[string]bool),
-		statsEnabled:  make(map[string]bool),
-		indexEnabled:  make(map[string]bool),
+		wr:                         defaultWriterProperties(),
+		encodings:                  make(map[string]Encoding),
+		codecs:                     make(map[string]compress.Compression),
+		compressLevel:              make(map[string]int),
+		dictEnabled:                make(map[string]bool),
+		statsEnabled:               make(map[string]bool),
+		indexEnabled:               make(map[string]bool),
+		bloomFilterNDVs:            make(map[string]int64),
+		bloomFilterFPPs:            make(map[string]float64),
+		bloomFilterEnabled:         make(map[string]bool),
+		adaptiveBloomFilterEnabled: make(map[string]bool),
+		numBloomFilterCandidates:   make(map[string]int),
 	}
 	for _, o := range opts {
 		o(&cfg)
@@ -436,6 +554,27 @@ func NewWriterProperties(opts ...WriterProperty) *WriterProperties {
 	for key, value := range cfg.indexEnabled {
 		get(key).PageIndexEnabled = value
 	}
+
+	for key, value := range cfg.bloomFilterEnabled {
+		get(key).BloomFilterEnabled = value
+	}
+
+	for key, value := range cfg.bloomFilterFPPs {
+		get(key).BloomFilterFPP = value
+	}
+
+	for key, value := range cfg.bloomFilterNDVs {
+		get(key).BloomFilterNDV = value
+	}
+
+	for key, value := range cfg.adaptiveBloomFilterEnabled {
+		get(key).AdaptiveBloomFilterEnabled = value
+	}
+
+	for key, value := range cfg.numBloomFilterCandidates {
+		get(key).BloomFilterCandidates = value
+	}
+
 	return cfg.wr
 }
 
@@ -612,4 +751,99 @@ func (w *WriterProperties) ColumnEncryptionProperties(path string) *ColumnEncryp
 // a fixed len byte array.
 func (w *WriterProperties) StoreDecimalAsInteger() bool {
 	return w.storeDecimalAsInt
+}
+
+// MaxBloomFilterBytes returns the maximum number of bytes that a bloom filter can use
+func (w *WriterProperties) MaxBloomFilterBytes() int64 {
+	return w.maxBloomFilterBytes
+}
+
+// BloomFilterEnabled returns the default value for whether or not bloom filters are enabled
+func (w *WriterProperties) BloomFilterEnabled() bool {
+	return w.defColumnProps.BloomFilterEnabled
+}
+
+// BloomFilterEnabledFor returns whether or not bloom filters are enabled for the given column path
+func (w *WriterProperties) BloomFilterEnabledFor(path string) bool {
+	if p, ok := w.columnProps[path]; ok {
+		return p.BloomFilterEnabled
+	}
+	return w.defColumnProps.BloomFilterEnabled
+}
+
+// BloomFilterEnabledPath is the same as BloomFilterEnabledFor but takes a ColumnPath
+func (w *WriterProperties) BloomFilterEnabledPath(path ColumnPath) bool {
+	return w.BloomFilterEnabledFor(path.String())
+}
+
+// BloomFilterFPP returns the default false positive probability for bloom filters
+func (w *WriterProperties) BloomFilterFPP() float64 {
+	return w.defColumnProps.BloomFilterFPP
+}
+
+// BloomFilterFPPFor returns the false positive probability for the given column path
+func (w *WriterProperties) BloomFilterFPPFor(path string) float64 {
+	if p, ok := w.columnProps[path]; ok {
+		return p.BloomFilterFPP
+	}
+	return w.defColumnProps.BloomFilterFPP
+}
+
+// BloomFilterFPPPath is the same as BloomFilterFPPFor but takes a ColumnPath
+func (w *WriterProperties) BloomFilterFPPPath(path ColumnPath) float64 {
+	return w.BloomFilterFPPFor(path.String())
+}
+
+// AdaptiveBloomFilterEnabled returns the default value for whether or not adaptive bloom filters are enabled
+func (w *WriterProperties) AdaptiveBloomFilterEnabled() bool {
+	return w.defColumnProps.AdaptiveBloomFilterEnabled
+}
+
+// AdaptiveBloomFilterEnabledFor returns whether or not adaptive bloom filters are enabled for the given column path
+func (w *WriterProperties) AdaptiveBloomFilterEnabledFor(path string) bool {
+	if p, ok := w.columnProps[path]; ok {
+		return p.AdaptiveBloomFilterEnabled
+	}
+	return w.defColumnProps.AdaptiveBloomFilterEnabled
+}
+
+// AdaptiveBloomFilterEnabledPath is the same as AdaptiveBloomFilterEnabledFor but takes a ColumnPath
+func (w *WriterProperties) AdaptiveBloomFilterEnabledPath(path ColumnPath) bool {
+	return w.AdaptiveBloomFilterEnabledFor(path.String())
+}
+
+// BloomFilterCandidates returns the default number of candidates to use for bloom filters
+func (w *WriterProperties) BloomFilterCandidates() int {
+	return w.defColumnProps.BloomFilterCandidates
+}
+
+// BloomFilterCandidatesFor returns the number of candidates to use for the given column path
+func (w *WriterProperties) BloomFilterCandidatesFor(path string) int {
+	if p, ok := w.columnProps[path]; ok {
+		return p.BloomFilterCandidates
+	}
+	return w.defColumnProps.BloomFilterCandidates
+}
+
+// BloomFilterCandidatesPath is the same as BloomFilterCandidatesFor but takes a ColumnPath
+func (w *WriterProperties) BloomFilterCandidatesPath(path ColumnPath) int {
+	return w.BloomFilterCandidatesFor(path.String())
+}
+
+// BloomFilterNDV returns the default number of distinct values to use for bloom filters
+func (w *WriterProperties) BloomFilterNDV() int64 {
+	return w.defColumnProps.BloomFilterNDV
+}
+
+// BloomFilterNDVFor returns the number of distinct values to use for the given column path
+func (w *WriterProperties) BloomFilterNDVFor(path string) int64 {
+	if p, ok := w.columnProps[path]; ok {
+		return p.BloomFilterNDV
+	}
+	return w.defColumnProps.BloomFilterNDV
+}
+
+// BloomFilterNDVPath is the same as BloomFilterNDVFor but takes a ColumnPath
+func (w *WriterProperties) BloomFilterNDVPath(path ColumnPath) int64 {
+	return w.BloomFilterNDVFor(path.String())
 }

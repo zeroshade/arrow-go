@@ -17,6 +17,7 @@
 package parquet
 
 import (
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/parquet/compress"
 	format "github.com/apache/arrow-go/v18/parquet/internal/gen-go/parquet"
@@ -50,7 +51,7 @@ const (
 	// Default is to not write page indexes for columns
 	DefaultPageIndexEnabled = false
 
-	DefaultCreatedBy = "parquet-go version 18.0.0-SNAPSHOT"
+	DefaultCreatedBy = "parquet-go version " + arrow.PkgVersion
 	DefaultRootName  = "schema"
 
 	DefaultMaxBloomFilterBytes        = 1024 * 1024

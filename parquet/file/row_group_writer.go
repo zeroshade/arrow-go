@@ -84,10 +84,10 @@ type rowGroupWriter struct {
 	bloomFilters map[string]metadata.BloomFilterBuilder
 }
 
-func newRowGroupWriter(sink utils.WriterTell, metadata *metadata.RowGroupMetaDataBuilder, ordinal int16, props *parquet.WriterProperties, buffered bool, fileEncryptor encryption.FileEncryptor, pageIdxBldr *metadata.PageIndexBuilder) *rowGroupWriter {
+func newRowGroupWriter(sink utils.WriterTell, rgMeta *metadata.RowGroupMetaDataBuilder, ordinal int16, props *parquet.WriterProperties, buffered bool, fileEncryptor encryption.FileEncryptor, pageIdxBldr *metadata.PageIndexBuilder) *rowGroupWriter {
 	ret := &rowGroupWriter{
 		sink:             sink,
-		metadata:         metadata,
+		metadata:         rgMeta,
 		props:            props,
 		ordinal:          ordinal,
 		buffered:         buffered,

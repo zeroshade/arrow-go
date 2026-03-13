@@ -172,6 +172,16 @@ func (b *adaptiveBlockSplitBloomFilter) WriteTo(w io.Writer, enc encryption.Encr
 	return b.optimalCandidate().bloomFilter.WriteTo(w, enc)
 }
 
+func (b *adaptiveBlockSplitBloomFilter) Release() {
+	for _, c := range b.candidates {
+		if c != nil && c.bloomFilter != nil {
+			c.bloomFilter.Release()
+		}
+	}
+	b.candidates = nil
+	b.largestCandidate = nil
+}
+
 func (b *adaptiveBlockSplitBloomFilter) initCandidates(maxBytes uint32, numCandidates int, fpp float64) {
 	b.candidates = make([]*bloomFilterCandidate, 0, numCandidates)
 	candidateByteSize := b.calcBoundedPowerOf2(maxBytes)

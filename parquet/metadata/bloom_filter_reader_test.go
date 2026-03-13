@@ -51,8 +51,7 @@ func (suite *BloomFilterBuilderSuite) SetupTest() {
 }
 
 func (suite *BloomFilterBuilderSuite) TearDownTest() {
-	runtime.GC() // we use setfinalizer to clean up the buffers, so run the GC
-	runtime.GC()
+	// Cleanup is now explicit via Release() calls in tests
 	suite.mem.AssertSize(suite.T(), 0)
 }
 
@@ -93,8 +92,11 @@ func (suite *BloomFilterBuilderSuite) TestSingleRowGroup() {
 		wr.Write([]byte("PAR1")) // offset of 0 means unset, so write something
 		// to force the offset to be set as a non-zero value
 		suite.Require().NoError(bldr.WriteTo(wr))
+
+		// Explicitly release bloom filters after writing
+		bf1.Release()
+		bf2.Release()
 	}
-	runtime.GC()
 
 	finalMeta, err := metaBldr.Finish()
 	suite.Require().NoError(err)
@@ -119,32 +121,24 @@ func (suite *BloomFilterBuilderSuite) TestSingleRowGroup() {
 		suite.Require().NoError(err)
 		suite.Require().NotNil(bfr)
 
-		{
-			bf1, err := bfr.GetColumnBloomFilter(0)
-			suite.Require().NoError(err)
-			suite.Require().NotNil(bf1)
-			suite.False(bf1.CheckHash(metadata.GetHash(bf1.Hasher(), parquet.ByteArray("World"))))
-			suite.True(bf1.CheckHash(metadata.GetHash(bf1.Hasher(), parquet.ByteArray("Hello"))))
-		}
-		runtime.GC() // force GC to run to put the buffer back into the pool
-		runtime.GC() // finalizers need two GC cycles to run reliably
-		{
-			bf2, err := bfr.GetColumnBloomFilter(1)
-			suite.Require().NoError(err)
-			suite.Require().Nil(bf2)
-		}
-		{
-			bf3, err := bfr.GetColumnBloomFilter(2)
-			suite.Require().NoError(err)
-			suite.Require().NotNil(bf3)
-			suite.False(bf3.CheckHash(metadata.GetHash(bf3.Hasher(), parquet.ByteArray("Hello"))))
-			suite.True(bf3.CheckHash(metadata.GetHash(bf3.Hasher(), parquet.ByteArray("World"))))
-		}
-		runtime.GC() // we're using setfinalizer, so force release
-		runtime.GC() // finalizers need two GC cycles to run reliably
+		bf1, err := bfr.GetColumnBloomFilter(0)
+		suite.Require().NoError(err)
+		suite.Require().NotNil(bf1)
+		suite.False(bf1.CheckHash(metadata.GetHash(bf1.Hasher(), parquet.ByteArray("World"))))
+		suite.True(bf1.CheckHash(metadata.GetHash(bf1.Hasher(), parquet.ByteArray("Hello"))))
+		bf1.Release()
+
+		bf2, err := bfr.GetColumnBloomFilter(1)
+		suite.Require().NoError(err)
+		suite.Require().Nil(bf2)
+
+		bf3, err := bfr.GetColumnBloomFilter(2)
+		suite.Require().NoError(err)
+		suite.Require().NotNil(bf3)
+		suite.False(bf3.CheckHash(metadata.GetHash(bf3.Hasher(), parquet.ByteArray("Hello"))))
+		suite.True(bf3.CheckHash(metadata.GetHash(bf3.Hasher(), parquet.ByteArray("World"))))
+		bf3.Release()
 	}
-	runtime.GC()
-	runtime.GC() // finalizers need two GC cycles to run reliably
 }
 
 const (
@@ -191,8 +185,7 @@ func (suite *EncryptedBloomFilterBuilderSuite) SetupTest() {
 }
 
 func (suite *EncryptedBloomFilterBuilderSuite) TearDownTest() {
-	runtime.GC() // we use setfinalizer to clean up the buffers, so run the GC
-	runtime.GC() // finalizers need two GC cycles to run reliably
+	// Cleanup is now explicit via Release() calls in tests
 	suite.mem.AssertSize(suite.T(), 0)
 }
 
@@ -238,6 +231,10 @@ func (suite *EncryptedBloomFilterBuilderSuite) TestEncryptedBloomFilters() {
 		suite.Require().NoError(bldr.WriteTo(wr))
 
 		rgMeta.Finish(0, 0)
+
+		// Explicitly release bloom filters after writing
+		bf1.Release()
+		bf2.Release()
 	}
 
 	finalMeta, err := metaBldr.Finish()
@@ -255,8 +252,6 @@ func (suite *EncryptedBloomFilterBuilderSuite) TestEncryptedBloomFilters() {
 				return buf
 			},
 		}
-		defer runtime.GC()
-
 		rdr := metadata.BloomFilterReader{
 			Input:         bytes.NewReader(suite.buf.Bytes()),
 			FileMetadata:  finalMeta,
@@ -268,13 +263,12 @@ func (suite *EncryptedBloomFilterBuilderSuite) TestEncryptedBloomFilters() {
 		suite.Require().NoError(err)
 		suite.Require().NotNil(bfr)
 
-		{
-			bf1, err := bfr.GetColumnBloomFilter(0)
-			suite.Require().NoError(err)
-			suite.Require().NotNil(bf1)
-			suite.False(bf1.CheckHash(metadata.GetHash(bf1.Hasher(), parquet.ByteArray("World"))))
-			suite.True(bf1.CheckHash(metadata.GetHash(bf1.Hasher(), parquet.ByteArray("Hello"))))
-		}
+		bf1, err := bfr.GetColumnBloomFilter(0)
+		suite.Require().NoError(err)
+		suite.Require().NotNil(bf1)
+		suite.False(bf1.CheckHash(metadata.GetHash(bf1.Hasher(), parquet.ByteArray("World"))))
+		suite.True(bf1.CheckHash(metadata.GetHash(bf1.Hasher(), parquet.ByteArray("Hello"))))
+		bf1.Release()
 	}
 }
 

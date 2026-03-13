@@ -19,5 +19,5 @@
 package metadata
 
 func init() {
-	checkHash, insertHash, insertBulk = checkHashGo, insertHashGo, insertBulkGo
+	checkHash, insertHash, insertBulk, checkBulk = checkHashGo, insertHashGo, insertBulkGo, checkBulkGo
 }

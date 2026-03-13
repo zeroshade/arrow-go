@@ -23,6 +23,7 @@ import (
 )
 
 func init() {
+	checkBulk = checkBulkGo
 	if cpu.X86.HasAVX2 {
 		checkHash = checkBlockAvx2
 		insertHash, insertBulk = insertBlockAvx2, insertBulkAvx2

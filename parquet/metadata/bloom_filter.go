@@ -121,7 +121,8 @@ func GetSpacedHashes[T parquet.ColumnTypes](h Hasher, numValid int64, vals []T, 
 
 	out := make([]uint64, 0, numValid)
 
-	// TODO: replace with bitset run reader pool
+	// Direct allocation without pooling - benchmarks show pooling adds overhead
+	// that outweighs the allocation cost for this small struct
 	setReader := bitutils.NewSetBitRunReader(validBits, validBitsOffset, int64(len(vals)))
 	for {
 		run := setReader.NextRun()
@@ -225,6 +226,14 @@ func (b *blockSplitBloomFilter) Size() int64 {
 	return int64(len(b.bitset32) * 4)
 }
 
+func (b *blockSplitBloomFilter) Release() {
+	if b.data != nil {
+		b.data.Release()
+		b.data = nil
+		b.bitset32 = nil
+	}
+}
+
 func (b *blockSplitBloomFilter) WriteTo(w io.Writer, enc encryption.Encryptor) (int, error) {
 	if enc != nil {
 		n := enc.Encrypt(w, b.data.Bytes())
@@ -291,6 +300,7 @@ type BloomFilterBuilder interface {
 	InsertHash(hash uint64)
 	InsertBulk(hashes []uint64)
 	WriteTo(io.Writer, encryption.Encryptor) (int, error)
+	Release()
 
 	getAlg() *format.BloomFilterAlgorithm
 	getHashStrategy() *format.BloomFilterHash
@@ -301,6 +311,7 @@ type BloomFilter interface {
 	Hasher() Hasher
 	CheckHash(hash uint64) bool
 	Size() int64
+	Release()
 }
 
 type TypedBloomFilter[T parquet.ColumnTypes] struct {

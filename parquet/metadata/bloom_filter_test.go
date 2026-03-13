@@ -130,12 +130,9 @@ func TestNewBloomFilter(t *testing.T) {
 			mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 			defer mem.AssertSize(t, 0)
 
-			{
-				bf := NewBloomFilterFromNDVAndFPP(tt.ndv, tt.fpp, tt.maxBytes, mem)
-				assert.EqualValues(t, tt.expectedBytes, bf.Size())
-				runtime.GC()
-			}
-			runtime.GC() // force GC to run and do the cleanup routines
+			bf := NewBloomFilterFromNDVAndFPP(tt.ndv, tt.fpp, tt.maxBytes, mem)
+			assert.EqualValues(t, tt.expectedBytes, bf.Size())
+			bf.Release() // Explicitly release instead of relying on GC/finalizers
 		})
 	}
 }

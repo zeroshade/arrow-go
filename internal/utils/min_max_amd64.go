@@ -21,10 +21,16 @@ package utils
 import "golang.org/x/sys/cpu"
 
 func init() {
-	// if the CPU supports AVX2 or SSE4 then let's use those to benefit from SIMD
-	// to accelerate the performance for finding the min and max for an integral slice.
-	// otherwise fallback to a pure go implementation if the cpu doesn't have these features.
-	if cpu.X86.HasAVX2 {
+	if cpu.X86.HasAVX512BW {
+		minmaxFuncs.i8 = int8MaxMinAVX512
+		minmaxFuncs.ui8 = uint8MaxMinAVX512
+		minmaxFuncs.i16 = int16MaxMinAVX512
+		minmaxFuncs.ui16 = uint16MaxMinAVX512
+		minmaxFuncs.i32 = int32MaxMinAVX512
+		minmaxFuncs.ui32 = uint32MaxMinAVX512
+		minmaxFuncs.i64 = int64MaxMinAVX512
+		minmaxFuncs.ui64 = uint64MaxMinAVX512
+	} else if cpu.X86.HasAVX2 {
 		minmaxFuncs.i8 = int8MaxMinAVX2
 		minmaxFuncs.ui8 = uint8MaxMinAVX2
 		minmaxFuncs.i16 = int16MaxMinAVX2

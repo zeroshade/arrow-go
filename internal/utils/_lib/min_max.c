@@ -20,11 +20,11 @@
 #include <math.h>
 #include <float.h>
 
-void FULL_NAME(int8_max_min)(int8_t values[], int len, int8_t* minout, int8_t* maxout) {
+void FULL_NAME(int8_max_min)(const int8_t * __restrict__ values, int64_t len, int8_t * __restrict__ minout, int8_t * __restrict__ maxout) {
   int8_t max = INT8_MIN;
   int8_t min = INT8_MAX;
 
-  for (int i = 0; i < len; ++i) {
+  for (int64_t i = 0; i < len; ++i) {
     min = min < values[i] ? min : values[i];
     max = max > values[i] ? max : values[i];
   }
@@ -33,11 +33,11 @@ void FULL_NAME(int8_max_min)(int8_t values[], int len, int8_t* minout, int8_t* m
   *minout = min;
 }
 
-void FULL_NAME(uint8_max_min)(uint8_t values[], int len, uint8_t* minout, uint8_t* maxout) {
+void FULL_NAME(uint8_max_min)(const uint8_t * __restrict__ values, int64_t len, uint8_t * __restrict__ minout, uint8_t * __restrict__ maxout) {
   uint8_t max = 0;
   uint8_t min = UINT8_MAX;
 
-  for (int i = 0; i < len; ++i) {
+  for (int64_t i = 0; i < len; ++i) {
     min = min < values[i] ? min : values[i];
     max = max > values[i] ? max : values[i];
   }
@@ -46,11 +46,11 @@ void FULL_NAME(uint8_max_min)(uint8_t values[], int len, uint8_t* minout, uint8_
   *minout = min;
 }
 
-void FULL_NAME(int16_max_min)(int16_t values[], int len, int16_t* minout, int16_t* maxout) {
+void FULL_NAME(int16_max_min)(const int16_t * __restrict__ values, int64_t len, int16_t * __restrict__ minout, int16_t * __restrict__ maxout) {
   int16_t max = INT16_MIN;
   int16_t min = INT16_MAX;
 
-  for (int i = 0; i < len; ++i) {
+  for (int64_t i = 0; i < len; ++i) {
     min = min < values[i] ? min : values[i];
     max = max > values[i] ? max : values[i];
   }
@@ -59,11 +59,11 @@ void FULL_NAME(int16_max_min)(int16_t values[], int len, int16_t* minout, int16_
   *minout = min;
 }
 
-void FULL_NAME(uint16_max_min)(uint16_t values[], int len, uint16_t* minout, uint16_t* maxout) {
+void FULL_NAME(uint16_max_min)(const uint16_t * __restrict__ values, int64_t len, uint16_t * __restrict__ minout, uint16_t * __restrict__ maxout) {
   uint16_t max = 0;
   uint16_t min = UINT16_MAX;
 
-  for (int i = 0; i < len; ++i) {
+  for (int64_t i = 0; i < len; ++i) {
     min = min < values[i] ? min : values[i];
     max = max > values[i] ? max : values[i];
   }
@@ -72,11 +72,11 @@ void FULL_NAME(uint16_max_min)(uint16_t values[], int len, uint16_t* minout, uin
   *minout = min;
 }
 
-void FULL_NAME(int32_max_min)(int32_t values[], int len, int32_t* minout, int32_t* maxout) {
+void FULL_NAME(int32_max_min)(const int32_t * __restrict__ values, int64_t len, int32_t * __restrict__ minout, int32_t * __restrict__ maxout) {
   int32_t max = INT32_MIN;
   int32_t min = INT32_MAX;
 
-  for (int i = 0; i < len; ++i) {
+  for (int64_t i = 0; i < len; ++i) {
     min = min < values[i] ? min : values[i];
     max = max > values[i] ? max : values[i];
   }
@@ -85,11 +85,11 @@ void FULL_NAME(int32_max_min)(int32_t values[], int len, int32_t* minout, int32_
   *minout = min;
 }
 
-void FULL_NAME(uint32_max_min)(uint32_t values[], int len, uint32_t* minout, uint32_t* maxout) {
+void FULL_NAME(uint32_max_min)(const uint32_t * __restrict__ values, int64_t len, uint32_t * __restrict__ minout, uint32_t * __restrict__ maxout) {
   uint32_t max = 0;
   uint32_t min = UINT32_MAX;
 
-  for (int i = 0; i < len; ++i) {
+  for (int64_t i = 0; i < len; ++i) {
     min = min < values[i] ? min : values[i];
     max = max > values[i] ? max : values[i];
   }
@@ -98,11 +98,11 @@ void FULL_NAME(uint32_max_min)(uint32_t values[], int len, uint32_t* minout, uin
   *minout = min;
 }
 
-void FULL_NAME(int64_max_min)(int64_t values[], int len, int64_t* minout, int64_t* maxout) {
+void FULL_NAME(int64_max_min)(const int64_t * __restrict__ values, int64_t len, int64_t * __restrict__ minout, int64_t * __restrict__ maxout) {
   int64_t max = INT64_MIN;
   int64_t min = INT64_MAX;
 
-  for (int i = 0; i < len; ++i) {
+  for (int64_t i = 0; i < len; ++i) {
     min = min < values[i] ? min : values[i];
     max = max > values[i] ? max : values[i];
   }
@@ -111,11 +111,11 @@ void FULL_NAME(int64_max_min)(int64_t values[], int len, int64_t* minout, int64_
   *minout = min;
 }
 
-void FULL_NAME(uint64_max_min)(uint64_t values[], int len, uint64_t* minout, uint64_t* maxout) {
+void FULL_NAME(uint64_max_min)(const uint64_t * __restrict__ values, int64_t len, uint64_t * __restrict__ minout, uint64_t * __restrict__ maxout) {
   uint64_t max = 0;
   uint64_t min = UINT64_MAX;
 
-  for (int i = 0; i < len; ++i) {
+  for (int64_t i = 0; i < len; ++i) {
     min = min < values[i] ? min : values[i];
     max = max > values[i] ? max : values[i];
   }

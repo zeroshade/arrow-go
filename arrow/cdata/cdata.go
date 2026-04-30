@@ -904,6 +904,7 @@ func importCArrayAsType(arr *CArrowArray, dt arrow.DataType) (imp *cimporter, er
 }
 
 func initReader(rdr *nativeCRecordBatchReader, stream *CArrowArrayStream) error {
+	rdr.refCount.Store(1)
 	rdr.stream = C.get_stream()
 	C.ArrowArrayStreamMove(stream, rdr.stream)
 	rdr.arr = C.get_arr()

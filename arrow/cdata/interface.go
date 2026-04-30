@@ -189,6 +189,7 @@ func ImportCArrayStream(stream *CArrowArrayStream, schema *arrow.Schema) arrio.R
 func ImportCRecordReader(stream *CArrowArrayStream, schema *arrow.Schema) (arrio.Reader, error) {
 	out := &nativeCRecordBatchReader{schema: schema}
 	if err := initReader(out, stream); err != nil {
+		out.Release()
 		return nil, err
 	}
 	return out, nil

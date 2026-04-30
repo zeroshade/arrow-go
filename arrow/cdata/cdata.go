@@ -44,15 +44,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
+	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
@@ -906,15 +907,6 @@ func initReader(rdr *nativeCRecordBatchReader, stream *CArrowArrayStream) error 
 	rdr.stream = C.get_stream()
 	C.ArrowArrayStreamMove(stream, rdr.stream)
 	rdr.arr = C.get_arr()
-	runtime.SetFinalizer(rdr, func(r *nativeCRecordBatchReader) {
-		if r.cur != nil {
-			r.cur.Release()
-		}
-		C.ArrowArrayStreamRelease(r.stream)
-		C.ArrowArrayRelease(r.arr)
-		C.free(unsafe.Pointer(r.stream))
-		C.free(unsafe.Pointer(r.arr))
-	})
 
 	var sc CArrowSchema
 	errno := C.stream_get_schema(rdr.stream, &sc)
@@ -940,12 +932,28 @@ type nativeCRecordBatchReader struct {
 
 	cur arrow.RecordBatch
 	err error
+
+	refCount atomic.Int64
 }
 
-// No need to implement retain and release here as we used runtime.SetFinalizer when constructing
-// the reader to free up the ArrowArrayStream memory when the garbage collector cleans it up.
-func (n *nativeCRecordBatchReader) Retain()  {}
-func (n *nativeCRecordBatchReader) Release() {}
+func (n *nativeCRecordBatchReader) Retain() {
+	n.refCount.Add(1)
+}
+
+func (n *nativeCRecordBatchReader) Release() {
+	debug.Assert(n.refCount.Load() > 0, "too many releases")
+
+	if n.refCount.Add(-1) == 0 {
+		if n.cur != nil {
+			n.cur.Release()
+		}
+
+		C.ArrowArrayStreamRelease(n.stream)
+		C.ArrowArrayRelease(n.arr)
+		C.free(unsafe.Pointer(n.stream))
+		C.free(unsafe.Pointer(n.arr))
+	}
+}
 
 func (n *nativeCRecordBatchReader) Err() error                     { return n.err }
 func (n *nativeCRecordBatchReader) RecordBatch() arrow.RecordBatch { return n.cur }

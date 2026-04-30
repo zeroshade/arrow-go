@@ -192,6 +192,7 @@ func ImportCRecordReader(stream *CArrowArrayStream, schema *arrow.Schema) (arrio
 		out.Release()
 		return nil, err
 	}
+
 	return out, nil
 }
 

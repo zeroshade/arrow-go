@@ -44,6 +44,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -909,6 +910,15 @@ func initReader(rdr *nativeCRecordBatchReader, stream *CArrowArrayStream) error 
 	C.ArrowArrayStreamMove(stream, rdr.stream)
 	rdr.arr = C.get_arr()
 
+	rdr.cleanUps[0] = runtime.AddCleanup(rdr, func(s *CArrowArrayStream) {
+		C.ArrowArrayStreamRelease(s)
+		C.free(unsafe.Pointer(s))
+	}, rdr.stream)
+	rdr.cleanUps[1] = runtime.AddCleanup(rdr, func(a *CArrowArray) {
+		C.ArrowArrayRelease(a)
+		C.free(unsafe.Pointer(a))
+	}, rdr.arr)
+
 	var sc CArrowSchema
 	errno := C.stream_get_schema(rdr.stream, &sc)
 	if errno != 0 {
@@ -935,6 +945,7 @@ type nativeCRecordBatchReader struct {
 	err error
 
 	refCount atomic.Int64
+	cleanUps [2]runtime.Cleanup
 }
 
 func (n *nativeCRecordBatchReader) Retain() {
@@ -945,6 +956,8 @@ func (n *nativeCRecordBatchReader) Release() {
 	debug.Assert(n.refCount.Load() > 0, "too many releases")
 
 	if n.refCount.Add(-1) == 0 {
+		n.cleanUps[0].Stop()
+		n.cleanUps[1].Stop()
 		if n.cur != nil {
 			n.cur.Release()
 		}

@@ -953,9 +953,10 @@ func (n *nativeCRecordBatchReader) Retain() {
 }
 
 func (n *nativeCRecordBatchReader) Release() {
-	debug.Assert(n.refCount.Load() > 0, "too many releases")
+	rc := n.refCount.Add(-1)
+	debug.Assert(rc >= 0, "too many releases")
 
-	if n.refCount.Add(-1) == 0 {
+	if rc == 0 {
 		n.cleanUps[0].Stop()
 		n.cleanUps[1].Stop()
 		if n.cur != nil {

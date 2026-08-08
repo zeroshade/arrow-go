@@ -18,9 +18,10 @@
 PERL_FIXUP_ROTATE=perl -i -pe 's/(ro[rl]\s+\w{2,3})$$/\1, 1/'
 
 C2GOASM=c2goasm
-CC=clang-11
-C_FLAGS=-target x86_64-unknown-none -masm=intel -mno-red-zone -mstackrealign -mllvm -inline-threshold=1000 \
+CC=clang-19
+C_FLAGS=-target x86_64-linux-gnu -masm=intel -mno-red-zone -mstackrealign -mllvm -inline-threshold=1000 \
 				-fno-asynchronous-unwind-tables -fno-exceptions -fno-rtti -O3 -fno-builtin -ffast-math -fno-jump-tables -I_lib
+ASM_FLAGS_AVX512=-mavx512bw -mavx512f -mavx512vl -mavx512dq
 ASM_FLAGS_AVX2=-mavx2 -mfma
 ASM_FLAGS_SSE4=-msse4
 ASM_FLAGS_BMI2=-mbmi2
@@ -35,7 +36,7 @@ ALL_SOURCES := $(shell find . -path ./_lib -prune -o -name '*.go' -name '*.s' -n
 .PHONEY: assembly
 
 INTEL_SOURCES := \
-	min_max_avx2_amd64.s min_max_sse4_amd64.s transpose_ints_avx2_amd64.s transpose_ints_sse4_amd64.s
+	min_max_avx512_amd64.s min_max_avx2_amd64.s min_max_sse4_amd64.s transpose_ints_avx2_amd64.s transpose_ints_sse4_amd64.s
 
 #
 # ARROW-15336: DO NOT add the assembly target for Arm64 (ARM_SOURCES) until c2goasm added the Arm64 support.
@@ -44,6 +45,9 @@ INTEL_SOURCES := \
 #
 
 assembly: $(INTEL_SOURCES)
+
+_lib/min_max_avx512_amd64.s: _lib/min_max.c
+	$(CC) -S $(C_FLAGS) $(ASM_FLAGS_AVX512) $^ -o $@ ; $(PERL_FIXUP_ROTATE) $@
 
 _lib/min_max_avx2_amd64.s: _lib/min_max.c
 	$(CC) -S $(C_FLAGS) $(ASM_FLAGS_AVX2) $^ -o $@ ; $(PERL_FIXUP_ROTATE) $@
@@ -62,6 +66,9 @@ _lib/transpose_ints_sse4_amd64.s: _lib/transpose_ints.c
 
 _lib/transpose_ints_neon.s: _lib/transpose_ints.c
 	$(CC) -S $(C_FLAGS_NEON) $^ -o $@ ; $(PERL_FIXUP_ROTATE) $@
+
+min_max_avx512_amd64.s: _lib/min_max_avx512_amd64.s
+	$(C2GOASM) -a -f $^ $@
 
 min_max_avx2_amd64.s: _lib/min_max_avx2_amd64.s
 	$(C2GOASM) -a -f $^ $@

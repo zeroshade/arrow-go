@@ -40,6 +40,15 @@ MINGW*)
       test_args=("-race")
     else
       test_args=("-asan")
+      # GCC's libasan aborts with internal thread-registry CHECK failures
+      # when the Go runtime creates and retires threads concurrently, which
+      # intermittently kills -asan test binaries in arbitrary packages.
+      # LLVM's compiler-rt ASan handles Go's thread lifecycle correctly, so
+      # link against it whenever clang is available.
+      if [[ -z "${CC:-}" ]] && command -v clang >/dev/null 2>&1; then
+        export CC=clang
+        export CXX=clang++
+      fi
     fi
   fi
   ;;

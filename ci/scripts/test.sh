@@ -75,15 +75,29 @@ popd
 
 pushd "${source_dir}/parquet"
 
-parquet_test_args=("${test_args[@]}")
+# parquet/file holds the large-value regression tests, which are what exhaust
+# the 7 GB macOS ARM64 runners when they run alongside other packages. Give
+# that one package its own invocation there and let the rest of parquet keep
+# its default parallelism: serializing every package instead (-p=1) cost the
+# macOS jobs about 4.5 minutes each and pushed them into their CI timeout.
+parquet_pkgs=("./...")
+serial_pkgs=()
 if [[ "$(go env GOOS)" = "darwin" ]]; then
-  # Keep package-level memory bounded on the 7 GB macOS ARM64 runners.
-  parquet_test_args+=("-p=1")
+  parquet_pkgs=()
+  while IFS= read -r pkg; do
+    if [[ "${pkg}" = */parquet/file ]]; then
+      serial_pkgs+=("${pkg}")
+    else
+      parquet_pkgs+=("${pkg}")
+    fi
+  done < <(go list ./...)
 fi
 
-go test "${parquet_test_args[@]}" -tags assert ./...
-
-# run the tests again but with the noasm tag
-go test "${parquet_test_args[@]}" -tags assert,noasm ./...
+for parquet_tags in assert assert,noasm; do
+  go test "${test_args[@]}" -tags "${parquet_tags}" "${parquet_pkgs[@]}"
+  if [[ ${#serial_pkgs[@]} -gt 0 ]]; then
+    go test "${test_args[@]}" -tags "${parquet_tags}" "${serial_pkgs[@]}"
+  fi
+done
 
 popd

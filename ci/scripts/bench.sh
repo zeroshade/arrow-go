@@ -40,7 +40,8 @@ Usage:
 
 Environment:
   BENCH_PACKAGES  Default packages for full/--run modes (default "./...").
-  BENCH_TIMEOUT   Default per-package `go test` timeout (default "40m").
+  BENCH_TIMEOUT   Wall-clock limit for the whole `go test` invocation
+                  (default "4h", sized for "./..."); "0" disables it.
 EOF
 }
 
@@ -50,11 +51,18 @@ run_benchmarks() {
   PARQUET_TEST_DATA="${source_dir}/parquet-testing/data"
   export PARQUET_TEST_DATA
 
+  # `go test -timeout` does not cover benchmarks: the testing package stops its
+  # alarm before running them, so a runaway benchmark would otherwise burn the
+  # full 6h GitHub Actions job limit. Bound the whole run with timeout(1)
+  # instead, so a shard that goes pathological fails fast and visibly.
+  local runner=()
+  if [ "${timeout}" != "0" ]; then
+    runner=(timeout --signal=QUIT --kill-after=1m "${timeout}")
+  fi
+
   pushd "${source_dir}" >/dev/null
-  # -timeout is applied to each package's test binary separately, so the full
-  # "./..." wall-clock cost is the sum across packages; --run shards a subset.
   # shellcheck disable=SC2086  # intentional word-splitting of package patterns
-  go test -bench=. -benchmem -timeout "${timeout}" -run='^$' ${packages} | tee "${out_file}"
+  "${runner[@]}" go test -bench=. -benchmem -run='^$' ${packages} | tee "${out_file}"
   popd >/dev/null
 }
 
@@ -81,7 +89,8 @@ shift
 mode="${1:-}"
 
 packages="${BENCH_PACKAGES:-./...}"
-timeout="${BENCH_TIMEOUT:-40m}"
+# Sized for the whole "./..." suite; CI passes a tighter --timeout per shard.
+timeout="${BENCH_TIMEOUT:-4h}"
 
 case "${mode}" in
 "" | -json | --json)

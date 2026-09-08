@@ -42,6 +42,10 @@ jobs:
   benchmark:
     needs: setup
     runs-on: ubuntu-latest
+    # The slowest shard (./arrow/array) takes ~40m, so 90m leaves headroom for
+    # runner variance while still failing a pathological benchmark ~4x sooner
+    # than the 6h GitHub default.
+    timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
@@ -59,7 +63,11 @@ jobs:
           cache-dependency-path: go.sum
           check-latest: false
       - name: Run benchmark shard ${{ matrix.id }}
-        run: bash ci/scripts/bench.sh "$(pwd)" --run --packages "${{ matrix.packages }}" --out "bench_stat_${{ matrix.id }}.dat"
+        run: |
+          bash ci/scripts/bench.sh "$(pwd)" --run \
+            --packages "${{ matrix.packages }}" \
+            --out "bench_stat_${{ matrix.id }}.dat" \
+            --timeout 90m
       - name: Upload shard results
         uses: actions/upload-artifact@v4
         with:

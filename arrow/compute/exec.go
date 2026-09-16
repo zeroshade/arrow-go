@@ -120,6 +120,15 @@ func execInternal(ctx context.Context, fn Function, opts FunctionOptions, passed
 		args = newArgs
 	}
 
+	// Derive the cancellable context before anything can capture it, so kernel
+	// init, executor init, the kernel itself, WrapResults and the guard below
+	// all observe the same cancellation. cancelCtx.cancel closes its own done
+	// channel before it walks its children, so anything left watching the
+	// caller's context could wake and publish a result while this context
+	// still reported no error, letting a canceled call return that result.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	kctx := &exec.KernelCtx{Ctx: ctx, Kernel: k}
 	init := k.GetInitFn()
 	kinitArgs := exec.KernelInitArgs{Kernel: k, Inputs: inTypes, Options: opts}
@@ -157,9 +166,6 @@ func execInternal(ctx context.Context, fn Function, opts FunctionOptions, passed
 	}
 
 	ectx := GetExecCtx(ctx)
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	ch := make(chan Datum, ectx.ExecChannelSize)
 	go func() {
